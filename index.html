@@ -1,0 +1,689 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Ghost Street</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=VT323&display=swap">
+<style>
+/* Layout: one full-height column. Header with stats and the home/street switch, then either the home terminal (log + game panel + prompt) or the street view (a pocket device with an amber screen). */
+:root {
+  --bg: #04090a;
+  --panel: #081210;
+  --fg: #b9f5cb;
+  --green: #3dff8a;
+  --dim: #4b7a5e;
+  --amber: #ffb54a;
+  --amber-dim: #7a5a26;
+  --err: #ff4a5c;
+  --line: #12301f;
+  --display: "VT323", "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.55;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow-x: hidden;
+}
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.18) 2px 3px);
+}
+.app { max-width: 880px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; }
+.logo { font-family: var(--display); font-size: 30px; line-height: 1; letter-spacing: 0.06em; color: var(--green); animation: glitch 7s infinite steps(1); }
+@keyframes glitch {
+  0%, 93%, 100% { text-shadow: none; transform: none; }
+  94% { text-shadow: 2px 0 var(--err), -2px 0 #3ad8ff; transform: translateX(1px); }
+  96% { text-shadow: -3px 0 var(--err), 3px 0 #3ad8ff; transform: translateX(-2px); }
+}
+.stats { display: flex; gap: 14px; color: var(--dim); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.stats b { color: var(--fg); font-weight: 500; }
+.mode {
+  font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+  background: var(--green); color: #031008; border: 0; padding: 8px 14px; cursor: pointer;
+}
+.mode.street { background: var(--amber); }
+.mode:focus-visible, .chip:focus-visible, .k:focus-visible, input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* home */
+.term { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 0 40px rgba(61,255,138,0.05); }
+#log { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px; }
+.ln { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ln.dim { color: var(--dim); }
+.ln.ok { color: var(--green); }
+.ln.warn { color: var(--amber); }
+.ln.err { color: var(--err); }
+.ln.cmd { color: #e8fff0; }
+.ln.big { font-family: var(--display); font-size: 26px; line-height: 1.1; color: var(--green); }
+.prompt { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
+.ps { color: var(--green); font-weight: 700; white-space: nowrap; }
+.prompt input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: #e8fff0; font: inherit; font-size: 16px; caret-color: var(--green); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 14px 12px; }
+.chip { font: inherit; font-size: 12px; background: transparent; color: var(--green); border: 1px solid var(--line); padding: 4px 10px; cursor: pointer; }
+.chip:hover { border-color: var(--green); background: rgba(61,255,138,0.08); }
+
+/* game widgets, same markup at home (hud) and on the device (gbox) */
+.hud { padding: 8px 14px; border-top: 1px solid var(--line); color: var(--amber); font-size: 13px; }
+.tinfo { white-space: pre-wrap; }
+.mz { white-space: pre; font-size: 18px; line-height: 1.15; letter-spacing: 0.3em; margin: 6px 0; user-select: none; }
+.mz .w { color: #3a2c12; }
+.mz .e { color: var(--amber-dim); }
+.mz .p { color: #fff; font-weight: 700; }
+.mz .t { color: var(--green); }
+.mz .f1 { color: var(--err); }
+.mz .f0 { color: #6b8f3a; }
+.pad { display: grid; grid-template-columns: repeat(3, 44px); gap: 6px; justify-content: center; margin-top: 6px; }
+.pad button { font: inherit; font-size: 16px; height: 40px; background: transparent; color: var(--amber); border: 1px solid var(--amber-dim); cursor: pointer; }
+.pad button:hover { background: rgba(255,181,74,0.1); border-color: var(--amber); }
+.pad button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* street */
+.device { flex: 1; min-height: 0; width: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; background: #0d0a05; border: 2px solid var(--amber-dim); box-shadow: 0 0 40px rgba(255,181,74,0.07); }
+.dhead { display: flex; justify-content: space-between; gap: 8px; padding: 6px 12px; background: var(--amber); color: #1a1100; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+#dev { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; color: var(--amber); display: flex; flex-direction: column; gap: 8px; }
+#dev .title { font-family: var(--display); font-size: 28px; line-height: 1; letter-spacing: 0.05em; }
+#dev .note { color: var(--amber-dim); font-size: 12px; }
+#dev .row { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.55em; }
+#dev .row.good { color: var(--green); }
+#dev .row.bad { color: var(--err); }
+.k {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left;
+  font: inherit; font-size: 13px; color: var(--amber); background: transparent;
+  border: 1px solid var(--amber-dim); padding: 10px 12px; cursor: pointer;
+}
+.k:hover { background: rgba(255,181,74,0.1); border-color: var(--amber); }
+.k.main { background: var(--amber); color: #1a1100; font-weight: 700; border-color: var(--amber); }
+.k small { color: var(--amber-dim); font-size: 11px; }
+.k.done small { color: var(--green); }
+.gform { display: flex; gap: 8px; }
+.gform input { flex: 1; min-width: 0; background: #000; border: 1px solid var(--amber); color: var(--amber); font: inherit; font-size: 16px; padding: 8px 10px; }
+.gform .k { width: auto; justify-content: center; }
+.rgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.rc { aspect-ratio: 1; min-width: 0; padding: 0; background: #000; color: #1a1100; border: 1px solid var(--amber-dim); font: inherit; font-size: 12px; cursor: pointer; }
+.rc:hover { border-color: var(--amber); }
+.rc:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.rc.v0 { background: rgba(255,181,74,0.95); }
+.rc.v1 { background: rgba(255,181,74,0.6); }
+.rc.v2 { background: rgba(255,181,74,0.3); color: var(--amber); }
+.rc.v3 { background: rgba(255,181,74,0.1); color: var(--amber); }
+.rc.me { background: #fff; color: #000; border-color: #fff; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
+</style>
+
+<div class="app">
+  <div class="top">
+    <span class="logo">GHOST//STREET</span>
+    <span class="stats" aria-label="Статистика"><span>LVL <b id="s-lvl">1</b></span><span>XP <b id="s-xp">0</b></span><span>$ <b id="s-money">0</b></span></span>
+    <button class="mode street" id="mode" type="button">Выйти на улицу</button>
+  </div>
+
+  <section class="view" id="home">
+    <div class="term">
+      <div id="log" role="log"></div>
+      <div class="hud" id="hud" hidden></div>
+      <form class="prompt" id="form" autocomplete="off">
+        <label class="ps" id="ps" for="in">ghost@home:~#</label>
+        <input id="in" type="text" spellcheck="false" autocapitalize="off" autocorrect="off" enterkeyhint="go">
+      </form>
+      <div class="chips">
+        <button class="chip" type="button" data-cmd="help">help</button>
+        <button class="chip" type="button" data-cmd="scan">scan</button>
+        <button class="chip" type="button" data-cmd="hack router-home">hack router-home</button>
+        <button class="chip" type="button" data-cmd="hack smart-lamp">hack smart-lamp</button>
+        <button class="chip" type="button" data-cmd="hack nas-archive">hack nas-archive</button>
+        <button class="chip" type="button" data-cmd="hack firewall-gate">hack firewall-gate</button>
+        <button class="chip" type="button" data-cmd="hack data-vault">hack data-vault</button>
+        <button class="chip" type="button" data-cmd="log">лог вкл/выкл</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="street" hidden>
+    <div class="device">
+      <div class="dhead"><span>ESP32-S3 · MARAUDER</span><span id="dstat">BAT 87% · КВАРТАЛ 1</span></div>
+      <div id="dev"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var hud = $('hud'), log = $('log'), input = $('in'), form = $('form'), ps = $('ps');
+  var home = $('home'), street = $('street'), modeBtn = $('mode'), dev = $('dev');
+
+  /* ---------- state ---------- */
+  var state = { xp: 0, money: 0, done: {} };
+  var where = 'home';
+  var homeGame = null;
+  var streetCtl = null;
+  var radar = null;
+  var busy = false;
+  var logOn = true;
+  var block = 1;
+  var nets = [], curNet = null;
+
+  try {
+    var saved = JSON.parse(localStorage.getItem('ghost-street') || 'null');
+    if (saved && typeof saved.xp === 'number') state = saved;
+  } catch (e) {}
+  function save() { try { localStorage.setItem('ghost-street', JSON.stringify(state)); } catch (e) {} }
+  function lvl() { return 1 + Math.floor(state.xp / 100); }
+  function stats() { $('s-lvl').textContent = lvl(); $('s-xp').textContent = state.xp; $('s-money').textContent = state.money; }
+  function reward(key, xp, money) {
+    if (state.done[key]) return false;
+    var before = lvl();
+    state.done[key] = true; state.xp += xp; state.money += money;
+    save(); stats();
+    return lvl() > before ? 'up' : true;
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  /* ---------- игровые движки: одни и те же дома и на улице ---------- */
+  var DIRS = { u: [-1, 0], d: [1, 0], l: [0, -1], r: [0, 1] };
+  var TRACE_CMDS = ['unlock', 'ghost on', 'trace off', 'route 7', 'flush', 'wipe log', 'sync key', 'mask ip', 'cd /vault', 'cat key', 'kill proc', 'open port'];
+  var MAZES = {
+    a: ['S.#...F..', '.F#.#.##.', '...F#....', '##.##F#.#', '...F...FT'],
+    b: ['S..#...F.', '.#.F.#.#.', '.#...#...', '.F.#.F.#.', '...#...FT'],
+    c: ['S.F...T', '.#.#.#.', '.F...F.', '.#.#.#.', '...F...']
+  };
+  var TRACE_RULE = 'Гонка с трассировкой: внизу появляется команда, вводи её точно как написано. Шкала ползёт вверх, верная команда отбрасывает её назад, ошибка добавляет.';
+  var MAZE_RULE = 'Лабиринт фаерволов: проведи пакет @ до ◎ стрелками, WASD или кнопками. ▓ закрытый фаервол ловит пакет, ░ открытый пропускает. Они мигают по очереди.';
+  function fwOn(r, c, tick) { return ((tick + r * 3 + c * 2) % 4) < 2; }
+
+  function makeTrace(box, cfg, say, finish) {
+    var g = { kind: 'trace', done: 0, trace: cfg.start, cur: '', over: false };
+    box.textContent = '';
+    var info = el('div', 'tinfo');
+    box.appendChild(info);
+    function draw() {
+      var n = Math.min(20, Math.round(g.trace / 100 * 20));
+      info.textContent = 'ТРАССИРОВКА [' + '█'.repeat(n) + '░'.repeat(20 - n) + '] ' + Math.round(g.trace) + '%\nВВЕДИ: ' + g.cur + '    (' + g.done + '/' + cfg.need + ')';
+    }
+    function next() { var c; do { c = pick(TRACE_CMDS); } while (c === g.cur); g.cur = c; draw(); }
+    function end(win) { if (g.over) return; g.over = true; clearInterval(g.timer); finish(win); }
+    g.stop = function () { g.over = true; clearInterval(g.timer); };
+    g.input = function (text) {
+      if (g.over) return;
+      if (text.trim().toLowerCase() === g.cur) {
+        g.done++; g.trace = Math.max(0, g.trace - cfg.relief);
+        if (g.done >= cfg.need) { end(true); return; }
+        say('ok', 'ok'); next();
+      } else {
+        g.trace += cfg.penalty;
+        if (g.trace >= 100) { say('Тебя вычислили.', 'err'); end(false); return; }
+        say('мимо, трассировка растёт', 'err'); draw();
+      }
+    };
+    g.timer = setInterval(function () {
+      g.trace += cfg.speed;
+      if (g.trace >= 100) { say('Тебя вычислили.', 'err'); end(false); } else draw();
+    }, 200);
+    next();
+    return g;
+  }
+
+  function makeMaze(box, cfg, say, finish) {
+    var M = cfg.maze;
+    var g = { kind: 'maze', pr: 0, pc: 0, tick: 0, lives: cfg.lives, over: false };
+    box.textContent = '';
+    var info = el('div', 'tinfo'), mz = el('div', 'mz'), pad = el('div', 'pad');
+    [['', ''], ['u', '▲', 'Вверх'], ['', ''], ['l', '◀', 'Влево'], ['d', '▼', 'Вниз'], ['r', '▶', 'Вправо']].forEach(function (p) {
+      if (!p[0]) { pad.appendChild(el('span')); return; }
+      var b = el('button', '', p[1]);
+      b.type = 'button'; b.dataset.dir = p[0]; b.setAttribute('aria-label', p[2]);
+      pad.appendChild(b);
+    });
+    pad.addEventListener('click', function (e) { var b = e.target.closest('button[data-dir]'); if (b) g.move(b.dataset.dir); });
+    box.appendChild(info); box.appendChild(mz); box.appendChild(pad);
+    function draw() {
+      var h = '';
+      for (var r = 0; r < M.length; r++) {
+        for (var c = 0; c < M[r].length; c++) {
+          var ch = M[r][c];
+          if (r === g.pr && c === g.pc) h += '<span class="p">@</span>';
+          else if (ch === '#') h += '<span class="w">█</span>';
+          else if (ch === 'F') h += fwOn(r, c, g.tick) ? '<span class="f1">▓</span>' : '<span class="f0">░</span>';
+          else if (ch === 'T') h += '<span class="t">◎</span>';
+          else h += '<span class="e">·</span>';
+        }
+        h += '\n';
+      }
+      mz.innerHTML = h;
+      info.textContent = 'Жизней: ' + '♥'.repeat(g.lives);
+    }
+    function end(win) { if (g.over) return; g.over = true; clearInterval(g.timer); finish(win); }
+    function caught() {
+      g.lives--; g.pr = 0; g.pc = 0;
+      say('Фаервол поймал пакет! Жизней: ' + g.lives, 'err');
+      if (g.lives <= 0) { say('Жизни кончились.', 'err'); end(false); }
+    }
+    g.stop = function () { g.over = true; clearInterval(g.timer); };
+    g.move = function (dir) {
+      if (g.over || !DIRS[dir]) return;
+      var nr = g.pr + DIRS[dir][0], nc = g.pc + DIRS[dir][1];
+      if (nr < 0 || nc < 0 || nr >= M.length || nc >= M[0].length || M[nr][nc] === '#') return;
+      g.pr = nr; g.pc = nc;
+      var ch = M[nr][nc];
+      if (ch === 'T') { draw(); end(true); return; }
+      if (ch === 'F' && fwOn(nr, nc, g.tick)) caught();
+      if (!g.over) draw();
+    };
+    g.input = function (text) {
+      var m = { w: 'u', a: 'l', s: 'd', d: 'r', 'ц': 'u', 'ф': 'l', 'ы': 'd', 'в': 'r' };
+      text.toLowerCase().split('').forEach(function (ch) { if (m[ch]) g.move(m[ch]); });
+    };
+    g.timer = setInterval(function () {
+      g.tick++;
+      if (M[g.pr][g.pc] === 'F' && fwOn(g.pr, g.pc, g.tick)) caught();
+      if (!g.over) draw();
+    }, cfg.tickMs);
+    draw();
+    return g;
+  }
+
+  /* Прогоняет цепочку этапов (одна игра или несколько подряд). */
+  function stageGame(box, stages, say, done, onStage) {
+    var i = 0, cur = null;
+    var ctl = {
+      kind: stages[0].kind,
+      stop: function () { if (cur) cur.stop(); },
+      input: function (t) { if (cur) cur.input(t); },
+      move: function (d) { if (cur && cur.move) cur.move(d); }
+    };
+    function start() {
+      var s = stages[i];
+      ctl.kind = s.kind;
+      if (stages.length > 1) say('Этап ' + (i + 1) + ' из ' + stages.length + (s.kind === 'trace' ? ': гонка с трассировкой' : ': лабиринт фаерволов'), 'warn');
+      if (onStage) onStage(s.kind);
+      var fin = function (win) {
+        if (!win) { done(false); return; }
+        i++;
+        if (i >= stages.length) done(true); else start();
+      };
+      cur = s.kind === 'trace' ? makeTrace(box, s.cfg, say, fin) : makeMaze(box, s.cfg, say, fin);
+    }
+    start();
+    return ctl;
+  }
+  function rulesFor(stages) {
+    var seen = {}, out = [];
+    stages.forEach(function (s) { if (!seen[s.kind]) { seen[s.kind] = 1; out.push(s.kind === 'trace' ? TRACE_RULE : MAZE_RULE); } });
+    return out.join('\n');
+  }
+  function stageNames(stages) {
+    return stages.map(function (s) { return s.kind === 'trace' ? 'гонка с трассировкой' : 'лабиринт фаерволов'; }).join(' + ');
+  }
+
+  /* ---------- home log ---------- */
+  function ip() { return rnd(10, 211) + '.' + rnd(0, 255) + '.' + rnd(0, 255) + '.' + rnd(1, 254); }
+  var templates = [
+    function () { return ['GET /api/v2/session 200 OK', 'dim']; },
+    function () { return ['[net] ' + ip() + ' -> ' + ip() + ':' + pick([22, 80, 443, 8080, 5432]) + ' SYN', 'dim']; },
+    function () { return [rnd(10, 99) + ': Protocol error', 'err']; },
+    function () { return ['firewall: Access denied with code ' + rnd(100, 999), 'err']; },
+    function () { return ['from ' + ip() + ' - Possible port scan detected', 'warn']; },
+    function () { return ['[auth] token refresh ok', 'ok']; },
+    function () { return ['warn: packet loss ' + rnd(1, 19) + '%', 'warn']; },
+    function () { return ['[dns] resolve ' + pick(['cdn', 'mail', 'node', 'vpn']) + rnd(1, 9) + '.local -> ' + ip(), 'dim']; },
+    function () { return ['0x' + rnd(4096, 65535).toString(16) + '  ' + [1, 2, 3, 4, 5, 6, 7, 8].map(function () { return rnd(0, 255).toString(16).padStart(2, '0'); }).join(' '), 'dim']; }
+  ];
+  function line(text, cls) {
+    var near = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    var d = document.createElement('div');
+    d.className = 'ln' + (cls ? ' ' + cls : '');
+    d.textContent = text;
+    log.appendChild(d);
+    while (log.childNodes.length > 500) log.removeChild(log.firstChild);
+    if (near || cls === 'cmd') log.scrollTop = log.scrollHeight;
+    return d;
+  }
+  async function lines(arr, cls, ms) { for (var i = 0; i < arr.length; i++) { line(arr[i], cls); await sleep(ms == null ? 60 : ms); } }
+  /* Ты печатаешь молча. После Enter экран заливает потоком строк, и только потом внизу появляются твоя команда и ответ. */
+  async function burst(n) {
+    busy = true;
+    if (where === 'home' && logOn) {
+      for (var i = 0; i < n; i++) { var t = pick(templates)(); line(t[0], t[1]); await sleep(28); }
+    }
+  }
+
+  /* ---------- home commands ---------- */
+  var targets = {
+    'router-home': { label: 'роутер', xp: 20, money: 15,
+      stages: [{ kind: 'trace', cfg: { need: 4, start: 5, speed: 0.45, relief: 12, penalty: 6 } }],
+      tip: 'Пароль по умолчанию надо менять в первый же день: его знает весь интернет.' },
+    'smart-lamp': { label: 'умная лампа', xp: 35, money: 25,
+      stages: [{ kind: 'maze', cfg: { maze: MAZES.b, lives: 3, tickMs: 700 } }],
+      tip: 'Лампочки и камеры часто живут с заводским паролем. Меняй его при настройке.' },
+    'nas-archive': { label: 'домашний сервер', xp: 70, money: 50,
+      stages: [{ kind: 'trace', cfg: { need: 6, start: 10, speed: 0.65, relief: 12, penalty: 9 } }, { kind: 'maze', cfg: { maze: MAZES.a, lives: 2, tickMs: 600 } }],
+      tip: 'Для сервера нужен длинный уникальный пароль и обновления, а не 12345.' },
+    'firewall-gate': { label: 'сторожевая система', xp: 60, money: 40,
+      stages: [{ kind: 'trace', cfg: { need: 6, start: 10, speed: 0.6, relief: 12, penalty: 8 } }],
+      tip: 'Системы защиты замечают странные входы по времени и поведению. Включай двухфакторную защиту и поглядывай, кто заходил в аккаунт.' },
+    'data-vault': { label: 'хранилище данных', xp: 80, money: 60,
+      stages: [{ kind: 'maze', cfg: { maze: MAZES.a, lives: 3, tickMs: 650 } }],
+      tip: 'Ценные данные прячут за несколькими барьерами, чтобы одной ошибки или одной дыры не хватило для взлома.' }
+  };
+
+  function psFor(kind) { ps.textContent = kind === 'trace' ? 'вводи>' : 'wasd>'; }
+  function startHomeGame(name) {
+    var t = targets[name];
+    line('Цель: ' + name + ' (' + t.label + ')', 'warn');
+    line(rulesFor(t.stages), 'dim');
+    if (t.stages.length > 1) line('Игра в ' + t.stages.length + ' этапа: ' + stageNames(t.stages) + '.', 'dim');
+    if (state.done[name]) line('Уже взломано раньше, награды за повтор не будет.', 'dim');
+    line('Пиши giveup, чтобы отступить.', 'dim');
+    homeGame = { key: name, t: t, ctl: null };
+    hud.hidden = false;
+    homeGame.ctl = stageGame(hud, t.stages, line, function (win) {
+      endHomeGame();
+      if (win) homeWin(name, t); else line('Взлом провален. Можно попробовать снова.', 'err');
+    }, psFor);
+  }
+  function endHomeGame() {
+    if (homeGame && homeGame.ctl) homeGame.ctl.stop();
+    homeGame = null; hud.hidden = true; hud.textContent = '';
+    ps.textContent = 'ghost@home:~#';
+  }
+  function homeWin(key, t) {
+    line('ДОСТУП РАЗРЕШЁН', 'big');
+    var rw = reward(key, t.xp, t.money);
+    if (rw) line('+' + t.xp + ' XP, +$' + t.money + (rw === 'up' ? '  · НОВЫЙ УРОВЕНЬ ' + lvl() : ''), 'ok');
+    else line('Награды за повтор нет.', 'dim');
+    line(t.tip, 'dim');
+  }
+  function homeInput(text) {
+    if (text.trim().toLowerCase() === 'giveup') { line('Отступаем.', 'warn'); endHomeGame(); return; }
+    homeGame.ctl.input(text);
+  }
+
+  var commands = {
+    help: async function () {
+      await lines([
+        'help             список команд',
+        'scan             найти устройства дома',
+        'hack <цель>      начать взлом (например: hack router-home)',
+        'status           твой уровень и деньги',
+        'log              включить или выключить поток логов',
+        'clear            очистить экран',
+        'outside          выйти на улицу с устройством'
+      ], '', 30);
+      line('Это игра: все цели выдуманные, настоящие устройства не затрагиваются.', 'dim');
+    },
+    scan: async function () {
+      line('Сканирую домашнюю сеть ...', 'dim');
+      await sleep(500);
+      Object.keys(targets).forEach(function (k) {
+        var t = targets[k];
+        line(k.padEnd(15) + t.label.padEnd(20) + stageNames(t.stages) + '  ' + (state.done[k] ? '[взломано]' : '[закрыто]'), state.done[k] ? 'ok' : '');
+      });
+    },
+    hack: async function (arg) {
+      var name = (arg || '').toLowerCase();
+      if (!targets[name]) { line('Выбери цель: ' + Object.keys(targets).join(', '), 'warn'); return; }
+      line('Подключаюсь к ' + name + ' ...', 'dim');
+      await sleep(450);
+      startHomeGame(name);
+    },
+    status: async function () { line('Уровень ' + lvl() + ' · опыт ' + state.xp + ' · деньги $' + state.money + ' · взломано целей: ' + Object.keys(state.done).length, 'ok'); },
+    log: async function () { logOn = !logOn; line(logOn ? 'Поток логов включён.' : 'Поток логов остановлен.', 'dim'); },
+    clear: async function () { log.textContent = ''; },
+    outside: async function () { goStreet(); },
+    sudo: async function () { line('Ты и так root. Попытка засчитана.', 'warn'); }
+  };
+
+  async function run(raw) {
+    var text = raw.trim();
+    if (!text) return;
+    line((homeGame ? ps.textContent + ' ' : 'ghost@home:~# ') + text, 'cmd');
+    busy = true;
+    try {
+      if (homeGame) { homeInput(text); }
+      else {
+        var parts = text.split(/\s+/), name = parts[0].toLowerCase();
+        if (commands[name]) await commands[name](text.slice(parts[0].length).trim());
+        else line('команда не найдена: ' + name + '. Напиши help.', 'err');
+      }
+    } finally { busy = false; }
+  }
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (busy) return;
+    var v = input.value; input.value = '';
+    if (!v.trim()) return;
+    burst(homeGame ? 0 : 22).then(function () { run(v); });
+  });
+  document.querySelector('.chips').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (b && !busy && !homeGame) burst(22).then(function () { run(b.dataset.cmd); });
+  });
+
+  /* ---------- street ---------- */
+  var pool = [
+    { ssid: 'Cafe_Free_WiFi', sec: 'OPEN', xp: 15, money: 10, tip: 'Открытая сеть: всё, что ты в ней отправляешь, могут видеть соседи. Заходи только на сайты с https и включай VPN.' },
+    { ssid: 'Smart-Lamp-Setup', sec: 'WEP', xp: 20, money: 15, tip: 'WEP считается сломанным уже много лет. Если роутер так умеет, его пора менять.' },
+    { ssid: 'Kvartira_47', sec: 'WPA2', xp: 30, money: 20, tip: 'Короткий пароль из словаря падает быстро. Длина важнее хитрых символов: подойдут 4 случайных слова.' },
+    { ssid: 'TP-LINK_A3F2', sec: 'WPA2', xp: 35, money: 25, tip: 'Название вроде TP-LINK_A3F2 выдаёт модель и почти заводские настройки. Переименуй сеть и смени пароль.' },
+    { ssid: 'iPhone_Димы', sec: 'HOTSPOT', xp: 30, money: 20, tip: 'Точку доступа на телефоне тоже защищай нормальным паролем, а не 1234.' },
+    { ssid: 'Library_Net', sec: 'WPA2', xp: 55, money: 40, tip: 'Общий пароль, который висит на стене, знают все. Для гостей делай отдельную гостевую сеть.' },
+    { ssid: 'Office-Guest', sec: 'WPA2', xp: 60, money: 45, tip: 'Гостевая сеть должна быть отделена от рабочей, иначе гость видит внутренние устройства.' },
+    { ssid: 'Bank_Secure_Net', sec: 'WPA3', xp: 120, money: 100, tip: 'WPA3 вместе с длинным паролем почти не оставляет шансов на подбор. Так и надо.' }
+  ];
+  function genNets() {
+    var p = pool.slice().sort(function () { return Math.random() - 0.5; }).slice(0, rnd(4, 6));
+    nets = p.map(function (n) {
+      var rssi = -rnd(35, 90);
+      var pen = rssi < -80 ? 3 : rssi < -70 ? 2 : rssi < -60 ? 1 : 0;
+      return Object.assign({}, n, { rssi: rssi, pen: pen, mac: [1, 2, 3, 4, 5, 6].map(function () { return rnd(0, 255).toString(16).padStart(2, '0'); }).join(':') });
+    }).sort(function (a, b) { return b.rssi - a.rssi; });
+  }
+  function bars(rssi) { return rssi > -55 ? '▂▄▆█' : rssi > -67 ? '▂▄▆ ' : rssi > -78 ? '▂▄  ' : '▂   '; }
+
+  /* Какая игра ждёт в сети: зависит от защиты. Слабый сигнал делает игру тяжелее. */
+  function stagesFor(n) {
+    var pen = n.pen || 0;
+    function tr(b) { return { kind: 'trace', cfg: { need: b.need, start: b.start, speed: b.speed + pen * 0.08, relief: 12, penalty: b.penalty } }; }
+    function mz(layout, lives, tickMs) { return { kind: 'maze', cfg: { maze: MAZES[layout], lives: Math.max(1, lives - (pen >= 2 ? 1 : 0)), tickMs: tickMs } }; }
+    if (n.sec === 'OPEN' || n.sec === 'WEP') return [tr({ need: 3, start: 5, speed: 0.4, penalty: 5 })];
+    if (n.sec === 'WPA3') return [tr({ need: 6, start: 10, speed: 0.7, penalty: 10 }), mz('a', 2, 600)];
+    return [mz('c', 3, 700)];
+  }
+
+  function key(label, small, cls, fn) {
+    var b = el('button', 'k' + (cls ? ' ' + cls : ''));
+    b.type = 'button';
+    b.appendChild(el('span', '', label));
+    if (small) b.appendChild(el('small', '', small));
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function setStat() { $('dstat').textContent = 'BAT ' + Math.max(12, 90 - block * 3) + '% · КВАРТАЛ ' + block; }
+
+  function screenMenu() {
+    dev.textContent = '';
+    dev.appendChild(el('div', 'title', 'МЕНЮ'));
+    dev.appendChild(el('div', 'note', 'Ты на улице. Устройство ловит выдуманные сети вокруг. Чем слабее сигнал, тем тяжелее взлом.'));
+    dev.appendChild(key('СКАН WI-FI', 'найти сети', 'main', function () { screenScan(); }));
+    dev.appendChild(key('ПОИСК СИГНАЛА', 'радар', '', function () { startRadar(); }));
+    dev.appendChild(key('ПРОЙТИ ДАЛЬШЕ', 'новый квартал', '', function () { block++; nets = []; setStat(); screenMenu(); }));
+    dev.appendChild(key('ДОМОЙ', 'в терминал', '', function () { goHome(); }));
+  }
+  async function screenScan() {
+    dev.textContent = '';
+    dev.appendChild(el('div', 'title', 'СКАНИРУЮ...'));
+    var r = el('div', 'row', '');
+    dev.appendChild(r);
+    for (var i = 0; i <= 16; i++) { r.textContent = '[' + '█'.repeat(i) + '░'.repeat(16 - i) + ']'; await sleep(40); }
+    if (!nets.length) genNets();
+    screenList();
+  }
+  function screenList() {
+    dev.textContent = '';
+    dev.appendChild(el('div', 'title', 'СЕТЕЙ: ' + nets.length));
+    nets.forEach(function (n) {
+      var d = !!state.done[n.ssid];
+      dev.appendChild(key(bars(n.rssi) + ' ' + n.ssid, (d ? '✔ ' : '') + n.sec + ' · ' + n.rssi + ' dBm', d ? 'done' : '', function () { curNet = n; screenNet(); }));
+    });
+    dev.appendChild(key('НАЗАД', '', '', function () { screenMenu(); }));
+  }
+  function screenNet() {
+    var n = curNet; dev.textContent = '';
+    dev.appendChild(el('div', 'title', n.ssid));
+    dev.appendChild(el('div', 'row', 'BSSID    ' + n.mac + '\nЗАЩИТА   ' + n.sec + '\nСИГНАЛ   ' + n.rssi + ' dBm ' + bars(n.rssi) + '\nИГРА     ' + stageNames(stagesFor(n))));
+    if (n.pen >= 2) dev.appendChild(el('div', 'note', 'Сигнал слабый, поэтому игра будет сложнее. Подойди ближе в другом квартале.'));
+    if (state.done[n.ssid]) dev.appendChild(el('div', 'note', 'Уже взломано, награды за повтор не будет.'));
+    dev.appendChild(key('ВЗЛОМАТЬ', 'начать игру', 'main', function () { startStreetGame(); }));
+    dev.appendChild(key('НАЗАД К СПИСКУ', '', '', function () { screenList(); }));
+  }
+  function startStreetGame() {
+    var n = curNet, stages = stagesFor(n);
+    dev.textContent = '';
+    dev.appendChild(el('div', 'title', 'ВЗЛОМ: ' + n.ssid));
+    dev.appendChild(el('div', 'note', rulesFor(stages)));
+    var box = el('div', 'gbox'); dev.appendChild(box);
+    var msg = el('div', 'row', ''); dev.appendChild(msg);
+    var f = el('form', 'gform');
+    var inp = el('input'); inp.id = 'gin'; inp.type = 'text'; inp.autocomplete = 'off'; inp.autocapitalize = 'off'; inp.spellcheck = false; inp.setAttribute('aria-label', 'Команда');
+    var ok = key('ВВОД', '', 'main', function () {}); ok.type = 'submit';
+    f.appendChild(inp); f.appendChild(ok);
+    dev.appendChild(f);
+    var ctl;
+    function say(text, cls) { msg.textContent = text; msg.className = 'row' + (cls === 'err' ? ' bad' : cls === 'ok' ? ' good' : ''); }
+    f.addEventListener('submit', function (e) { e.preventDefault(); var v = inp.value; inp.value = ''; if (ctl && v.trim()) ctl.input(v); });
+    streetCtl = ctl = stageGame(box, stages, say, function (win) { ctl.stop(); streetCtl = null; streetResult(win); }, function (kind) {
+      f.hidden = kind !== 'trace';
+      if (kind === 'trace') inp.focus({ preventScroll: true });
+    });
+    dev.appendChild(key('ОТСТУПИТЬ', '', '', function () { ctl.stop(); streetCtl = null; screenNet(); }));
+  }
+  function streetResult(win) {
+    var n = curNet; dev.textContent = '';
+    if (win) {
+      var rw = reward(n.ssid, n.xp, n.money);
+      dev.appendChild(el('div', 'title', 'ДОСТУП ЕСТЬ'));
+      dev.appendChild(el('div', 'row good', rw ? '+' + n.xp + ' XP · +$' + n.money + (rw === 'up' ? '\nНОВЫЙ УРОВЕНЬ ' + lvl() : '') : 'Награда за повтор не начисляется.'));
+    } else {
+      dev.appendChild(el('div', 'title', 'ОТКАЗ'));
+      dev.appendChild(el('div', 'row bad', 'Сеть отбила попытку.'));
+    }
+    dev.appendChild(el('div', 'note', n.tip));
+    dev.appendChild(key('К СПИСКУ СЕТЕЙ', '', 'main', function () { screenList(); }));
+  }
+
+  /* ---------- игра: радар сигнала ---------- */
+  function rdist() { return Math.abs(radar.pr - radar.sr) + Math.abs(radar.pc - radar.sc); }
+  function radarSee() {
+    var k = radar.pr + ',' + radar.pc;
+    if (!radar.seen[k]) radar.seen[k] = { v: 35 + rdist() * 6 + rnd(-4, 4), d: rdist() };
+    return radar.seen[k];
+  }
+  function startRadar() {
+    radar = { W: 8, H: 6, sr: 0, sc: 0, pr: 0, pc: 0, steps: 16, seen: {}, over: false };
+    radar.sr = rnd(0, radar.H - 1); radar.sc = rnd(0, radar.W - 1);
+    do { radar.pr = rnd(0, radar.H - 1); radar.pc = rnd(0, radar.W - 1); } while (rdist() < 5);
+    radarSee(); radarDraw();
+  }
+  function radarDraw() {
+    var r = radar, cur = radarSee();
+    dev.textContent = '';
+    dev.appendChild(el('div', 'title', 'РАДАР'));
+    dev.appendChild(el('div', 'row', 'ШАГОВ ' + r.steps + ' · СИГНАЛ -' + cur.v + ' dBm ' + bars(-cur.v)));
+    var grid = el('div', 'rgrid');
+    for (var y = 0; y < r.H; y++) {
+      for (var x = 0; x < r.W; x++) {
+        var c = el('button', 'rc');
+        c.type = 'button'; c.dataset.r = y; c.dataset.c = x;
+        c.setAttribute('aria-label', 'Клетка ' + (y + 1) + ',' + (x + 1));
+        var s = r.seen[y + ',' + x];
+        if (s) { c.classList.add(s.d <= 1 ? 'v0' : s.d <= 3 ? 'v1' : s.d <= 5 ? 'v2' : 'v3'); c.textContent = s.v; }
+        if (y === r.pr && x === r.pc) { c.classList.add('me'); c.textContent = '@'; }
+        grid.appendChild(c);
+      }
+    }
+    grid.addEventListener('click', function (e) { var b = e.target.closest('.rc'); if (b) radarGo(+b.dataset.r, +b.dataset.c); });
+    dev.appendChild(grid);
+    dev.appendChild(el('div', 'note', 'Где-то рядом выдуманный источник сети. Иди на соседние клетки: тап, стрелки или WASD. Число в клетке это сила сигнала, чем оно меньше, тем ближе источник. Замеры немного шумят.'));
+    dev.appendChild(key('ВЫЙТИ', 'в меню', '', function () { radar = null; screenMenu(); }));
+  }
+  function radarGo(y, x) {
+    var r = radar;
+    if (!r || r.over || y < 0 || x < 0 || y >= r.H || x >= r.W) return;
+    if (Math.abs(y - r.pr) + Math.abs(x - r.pc) !== 1) return;
+    r.pr = y; r.pc = x; r.steps--;
+    if (rdist() === 0) { radarEnd(true); return; }
+    radarSee();
+    if (r.steps <= 0) { radarEnd(false); return; }
+    radarDraw();
+  }
+  function radarEnd(win) {
+    var r = radar; r.over = true; dev.textContent = '';
+    if (win) {
+      var rw = reward('radar' + block, 40, 30);
+      dev.appendChild(el('div', 'title', 'ИСТОЧНИК НАЙДЕН'));
+      dev.appendChild(el('div', 'row good', 'Скрытая сеть Node_' + rnd(4096, 65535).toString(16).toUpperCase() + '\nОсталось шагов: ' + r.steps));
+      dev.appendChild(el('div', 'row good', rw ? '+40 XP · +$30' + (rw === 'up' ? '\nНОВЫЙ УРОВЕНЬ ' + lvl() : '') : 'За этот квартал награда уже получена.'));
+      dev.appendChild(el('div', 'note', 'Сигнал слабеет с расстоянием и стенами. Поэтому роутер лучше ставить в центре квартиры, а чужую слабую сеть удаётся поймать только рядом.'));
+    } else {
+      dev.appendChild(el('div', 'title', 'СИГНАЛ ПОТЕРЯН'));
+      dev.appendChild(el('div', 'row bad', 'Шаги кончились. Источник был в строке ' + (r.sr + 1) + ', столбце ' + (r.sc + 1) + '.'));
+    }
+    dev.appendChild(key('ЕЩЁ РАЗ', 'новый поиск', 'main', function () { startRadar(); }));
+    dev.appendChild(key('В МЕНЮ', '', '', function () { radar = null; screenMenu(); }));
+  }
+
+  /* ---------- управление с клавиатуры ---------- */
+  var KEYDIR = { ArrowUp: 'u', ArrowDown: 'd', ArrowLeft: 'l', ArrowRight: 'r', w: 'u', s: 'd', a: 'l', d: 'r', 'ц': 'u', 'ы': 'd', 'ф': 'l', 'в': 'r' };
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var d = KEYDIR[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (!d) return;
+    if (where === 'home' && homeGame && homeGame.ctl.kind === 'maze') { e.preventDefault(); homeGame.ctl.move(d); }
+    else if (where === 'street' && streetCtl && streetCtl.kind === 'maze') { e.preventDefault(); streetCtl.move(d); }
+    else if (where === 'street' && radar && !radar.over) { e.preventDefault(); radarGo(radar.pr + DIRS[d][0], radar.pc + DIRS[d][1]); }
+  });
+
+  /* ---------- mode switch ---------- */
+  function goStreet() {
+    if (homeGame) { line('Ты ушёл. Взлом прерван.', 'warn'); endHomeGame(); }
+    where = 'street'; home.hidden = true; street.hidden = false;
+    modeBtn.textContent = 'Вернуться домой'; modeBtn.classList.remove('street');
+    setStat(); screenMenu();
+  }
+  function goHome() {
+    radar = null;
+    if (streetCtl) { streetCtl.stop(); streetCtl = null; }
+    where = 'home'; street.hidden = true; home.hidden = false;
+    modeBtn.textContent = 'Выйти на улицу'; modeBtn.classList.add('street');
+    input.focus({ preventScroll: true });
+    log.scrollTop = log.scrollHeight;
+  }
+  modeBtn.addEventListener('click', function () { if (where === 'home') goStreet(); else goHome(); });
+
+  /* ---------- boot ---------- */
+  stats();
+  (async function boot() {
+    busy = true;
+    for (var i = 0; i < 40; i++) { var t = pick(templates)(); line(t[0], t[1]); }
+    await lines(['GHOST OS 4.2 · дом, 5 устройств в сети', 'следы за собой ... стёрты'], 'dim', 80);
+    line('Ты в системе.', 'big');
+    line('Напиши help или нажми кнопку. Попробуй hack router-home. Когда надоест дома, жми «Выйти на улицу».', 'warn');
+    busy = false;
+    input.focus({ preventScroll: true });
+  })();
+})();
+</script>
+
+</body></html>
